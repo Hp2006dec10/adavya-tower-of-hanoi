@@ -46,7 +46,7 @@ body {
 @keyframes flash {
   0% {
     border-color: rgba(248, 113, 113, 0.9);
-    background: rgba(248, 113, 113, 0.08);
+    background: rgba(255, 1, 1, 0.5);
   }
   100% {
     border-color: rgba(255, 255, 255, 0.2);
