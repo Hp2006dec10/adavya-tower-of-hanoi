@@ -304,17 +304,13 @@ export default function GamePage() {
                     }}
                     >
                     <div className="relative flex h-full w-full items-end justify-center">
-                        {/* Peg Rod */}
                         <div className="absolute left-1/2 h-full -translate-x-1/2 w-2 rounded-full bg-slate-200/80" />
-                        {/* Disks Container */}
                         <div className="relative flex w-full flex-col items-center justify-end pb-2">
-                        {/* Render disks: array is [bottom...top], so render in reverse to show bottom first */}
                         {peg.slice().reverse().map((diskIndex, reverseIdx) => {
-                            // diskIndex 0 = smallest (top), diskIndex 4 = largest (bottom)
-                            // Array: [4,3,2,1,0] -> reverse: [0,1,2,3,4] -> render: 0 at top, 4 at bottom
+                            
                             const actualIdx = peg.length - 1 - reverseIdx;
-                            const widthPercent = 10 + (diskIndex + 1) * 6;
-                            const isTop = actualIdx === peg.length - 1; // Last element is top (smallest)
+                            const widthPercent = 15 + (diskIndex + 1) * 10;
+                            const isTop = actualIdx === peg.length - 1;
                             return (
                             <div
                                 key={`${pegIdx}-${diskIndex}-${actualIdx}`}
