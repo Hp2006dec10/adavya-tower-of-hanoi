@@ -37,14 +37,16 @@ export default function Home() {
       intro:
         "Before you begin, make sure you follow the official relay rules for this Tower of Hanoi challenge.",
       bullets: [
-        "The game begins with all 5 disks stacked on the first peg.",
-        "Move the entire stack to the target peg following Tower of Hanoi rules.",
+        "The game begins with all 5 disks stacked on the 1st peg.",
+        "Your goal is to move the entire stack to the 3rd peg following Tower of Hanoi rules.",
         "Only one disk can be moved at a time.",
         "Each move takes the upper disk from a stack and places it on another peg.",
         "No larger disk may ever sit on top of a smaller disk.",
         "Relay format: each participant makes a single move and tags the next.",
         "If an illegal move happens, you may reset but must restart from Player 1.",
         "Completion is verified when the 5th disk rests correctly on the destination peg.",
+        "Time limit for each iteration of the game is 2 minutes. After 2 minutes, the game restarts to new iteration.",
+        "For the new iteration, the team can either start from the Participant 1 or continue with the next person in the queue."
       ],
     }),
     []
@@ -79,7 +81,7 @@ export default function Home() {
           </button>
         </div>
       ) : (
-        <div className="glass-card w-full max-w-2xl rounded-3xl px-6 py-8 sm:px-10 h-full">
+        <div className="glass-card w-full max-w-4xl rounded-3xl px-6 py-8 sm:px-10 h-full">
           <TowerRules content={ruleContent} />
           <div className="mt-8 flex gap-4">
             <button

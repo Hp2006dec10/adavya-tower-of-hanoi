@@ -19,12 +19,11 @@ export function TowerRules({ content }: { content: RuleContent }) {
       {content.intro ? (
         <p className="text-slate-200/90">{content.intro}</p>
       ) : null}
-      <ul className="list-disc space-y-2 rounded-2xl bg-white/5 pl-6 pr-2 py-4 text-left text-slate-100 marker:text-slate-300">
+      <ol className="list-decimal space-y-2 rounded-2xl bg-white/5 pl-10 pr-2 py-4 text-left text-slate-100 marker:text-slate-300">
         {content.bullets.map((item) => (
-          <li key={item}>{item}</li>
+          <li key={item} className="px-4">{item}</li>
         ))}
-      </ul>
+      </ol>
     </div>
   );
 }
-

@@ -1,10 +1,10 @@
-/* Game page with Tower of Hanoi interactions, timer, move tracking,
-   sidebar instructions, and restart handling. */
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { TowerRules } from "../shared/rules";
+import { db } from "../../firebase";
+import { onSnapshot, doc } from "firebase/firestore";
 
 type GameToken = {
   status: "playing" | "completed";
@@ -24,7 +24,9 @@ const INITIAL_PEGS = [
 ] as [number[], number[], number[]];
 
 type PegState = [number[], number[], number[]];
-
+type Data = {
+  time : number;
+}
 export default function GamePage() {
   const [pegs, setPegs] = useState<PegState>(INITIAL_PEGS);
   const [selected, setSelected] = useState<number | null>(null);
@@ -33,9 +35,27 @@ export default function GamePage() {
   const [elapsed, setElapsed] = useState(0);
   const [invalidPeg, setInvalidPeg] = useState<number | null>(null);
   const [confirmReset, setConfirmReset] = useState(false);
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [timer, setTimer] = useState(120000);
+  const [showTimeoutReset, setShowTimeoutReset] = useState(false);
+  const [waitingForEnter, setWaitingForEnter] = useState(false);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const router = useRouter();
+
+  useEffect(() => {
+    const getTimer = () => {
+      const unsubscribe = onSnapshot(doc(db, 'timer', 'timer-doc'), (snapshot) => {
+        const data = snapshot.data();
+        if (!data) return;
+        const timer = data.time;
+        setTimer(timer);
+        console.log(timer);
+      })
+      return unsubscribe;
+    }
+
+    const unsubscribe = getTimer();
+    return () => unsubscribe();
+  }, [])
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -57,7 +77,8 @@ export default function GamePage() {
       }
       setStartTime(token.startTime);
       setMoves(token.moves ?? 0);
-    } catch (err) {
+    } 
+    catch (err) {
       console.error("Could not parse token", err);
       const now = Date.now();
       localStorage.setItem(
@@ -68,16 +89,40 @@ export default function GamePage() {
     }
   }, [router]);
 
+  const handleTimeoutReset = () => {
+    // Stop the timer
+    timerRef.current && clearInterval(timerRef.current);
+    // Reset game state
+    setPegs(INITIAL_PEGS);
+    setMoves(0);
+    setSelected(null);
+    setElapsed(0);
+    setStartTime(null);
+    // Update localStorage
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({ status: "playing", startTime: 0, moves: 0 })
+    );
+    // Show popup and wait for Enter key
+    setShowTimeoutReset(true);
+    setWaitingForEnter(true);
+  }
+
   useEffect(() => {
-    if (!startTime) return;
+    if (!startTime || waitingForEnter) return;
     timerRef.current && clearInterval(timerRef.current);
     timerRef.current = setInterval(() => {
-      setElapsed(Date.now() - startTime);
+      const newElapsed = Date.now() - startTime;
+      setElapsed(newElapsed);
+      // Check if 2 minutes (120000ms) has passed
+      if (newElapsed >= timer * 60000) {
+        handleTimeoutReset();
+      }
     }, 1000);
     return () => {
       timerRef.current && clearInterval(timerRef.current);
     };
-  }, [startTime]);
+  }, [startTime, waitingForEnter, handleTimeoutReset]);
 
   const timeLabel = useMemo(() => {
     const totalSeconds = Math.floor(elapsed / 1000);
@@ -97,11 +142,11 @@ export default function GamePage() {
     () => ({
       title: "How to Play",
       bullets: [
-        "Click any top disk to lift it.",
+        "Click the top disk of any peg to lift it.",
         "Click another peg to place the lifted disk.",
         "You cannot place a larger disk on a smaller one.",
         "One player can only make one move at a time.",
-        "Drag and drop is supported for moving disks.",
+        "You can also drag a disk and drop it into another peg.",
       ],
     }),
     []
@@ -215,52 +260,44 @@ export default function GamePage() {
     );
   };
 
+  const startNextAttempt = useCallback(() => {
+    const now = Date.now();
+    setStartTime(now);
+    setElapsed(0);
+    setShowTimeoutReset(false);
+    setWaitingForEnter(false);
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({ status: "playing", startTime: now, moves: 0 })
+    );
+  }, []);
+
+  // Handle Enter key press to start next attempt
+  useEffect(() => {
+    if (!waitingForEnter) return;
+
+    const handleKeyPress = (e: KeyboardEvent) => {
+      if (e.key === "Enter") {
+        startNextAttempt();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyPress);
+    return () => {
+      window.removeEventListener("keydown", handleKeyPress);
+    };
+  }, [waitingForEnter, startNextAttempt]);
+
   return (
     <div className="flex w-full gap-6 h-screen">
       {/* Main Game Area */}
       <div className="relative w-full flex items-center gap-6 px-2">
         {/* How to Play - Left Sidebar */}
-        <aside className="hidden lg:block w-1/5 mt-40">
+        <aside className="hidden lg:block w-1/4 mt-40">
             <div className="glass-card h-full rounded-3xl px-5 py-5">
                 <TowerRules content={howToPlayContent} />
             </div>
         </aside>
-        {/* Mobile How to Play Button */}
-        <div className="absolute top-0 lg:hidden">
-            <button
-                onClick={() => setSidebarOpen(true)}
-                className="glass-card flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left text-sm font-semibold text-slate-100"
-            >
-                How to Play
-                <span className="rounded-full bg-white/20 px-3 py-1 text-xs uppercase">
-                Open
-                </span>
-            </button>
-            {sidebarOpen ? (
-                <div
-                className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm"
-                onClick={() => setSidebarOpen(false)}
-                >
-                <div
-                    className="glass-strong absolute left-0 top-0 h-full w-11/12 max-w-sm p-5"
-                    onClick={(e) => e.stopPropagation()}
-                >
-                    <div className="mb-4 flex items-center justify-between">
-                    <h3 className="text-lg font-bold text-slate-50">
-                        How to Play
-                    </h3>
-                    <button
-                        onClick={() => setSidebarOpen(false)}
-                        className="rounded-full bg-white/20 px-3 py-1 text-xs font-semibold text-slate-100"
-                    >
-                        Close
-                    </button>
-                    </div>
-                    <TowerRules content={howToPlayContent} />
-                </div>
-                </div>
-            ) : null}
-        </div>
         {/* Game Board Container */}
         <div className="relative pt-24 w-full lg:w-1/2 mx-30">
             {/* Floating Controls Above Board */}
@@ -282,7 +319,7 @@ export default function GamePage() {
             </div>
 
             {/* Single Glass Container with All Three Pegs */}
-            <div className="glass-card relative rounded-3xl py-8 max-w-2xl mx-auto">
+            <div className="glass-card relative rounded-3xl py-8 max-w-3xl mx-auto">
                 <h2
                 className="mb-6 text-2xl font-bold text-slate-50 text-center"
                 style={{ fontFamily: "var(--font-bungee)" }}
@@ -290,52 +327,52 @@ export default function GamePage() {
                 Tower Board
                 </h2>
                 <div className="relative flex h-[250px] items-center justify-between gap-4 px-4">
-                {pegs.map((peg, pegIdx) => (
-                    <div
-                    key={pegIdx}
-                    className={`flex h-full w-1/3 flex-col items-center justify-end gap-2 transition ${
-                        invalidPeg === pegIdx ? "peg-invalid" : ""
-                    } ${selected === pegIdx ? "ring-2 ring-sky-400 rounded-lg" : ""}`}
-                    onClick={() => handlePegClick(pegIdx)}
-                    onDragOver={(e) => e.preventDefault()}
-                    onDrop={(e) => {
-                        e.preventDefault();
-                        handleDrop(pegIdx);
-                    }}
-                    >
-                    <div className="relative flex h-full w-full items-end justify-center">
-                        <div className="absolute left-1/2 h-full -translate-x-1/2 w-2 rounded-full bg-slate-200/80" />
-                        <div className="relative flex w-full flex-col items-center justify-end pb-2">
-                        {peg.slice().reverse().map((diskIndex, reverseIdx) => {
-                            
-                            const actualIdx = peg.length - 1 - reverseIdx;
-                            const widthPercent = 15 + (diskIndex + 1) * 10;
-                            const isTop = actualIdx === peg.length - 1;
-                            return (
-                            <div
-                                key={`${pegIdx}-${diskIndex}-${actualIdx}`}
-                                draggable={isTop}
-                                onDragStart={(e) => {
-                                const allowed = handleDragStart(pegIdx);
-                                if (!allowed) e.preventDefault();
-                                }}
-                                className={`h-8 rounded-full text-center text-sm font-bold text-slate-900 shadow-lg transition-transform cursor-pointer ${
-                                isTop && selected === pegIdx
-                                    ? "-translate-y-4"
-                                    : ""
-                                }`}
-                                style={{
-                                width: `${widthPercent}%`,
-                                background: DISK_COLORS[diskIndex] ?? "#38bdf8",
-                                }}
-                            >
-                            </div>
-                            );
-                        })}
-                        </div>
-                    </div>
-                    </div>
-                ))}
+                  {pegs.map((peg, pegIdx) => (
+                      <div
+                      key={pegIdx}
+                      className={`flex h-full cursor-pointer glass-strong rounded-2xl py-4 w-1/3 flex-col items-center justify-end gap-2 transition ${
+                          invalidPeg === pegIdx ? "peg-invalid" : ""
+                      } ${selected === pegIdx ? "ring-2 ring-sky-400" : ""}`}
+                      onClick={() => handlePegClick(pegIdx)}
+                      onDragOver={(e) => e.preventDefault()}
+                      onDrop={(e) => {
+                          e.preventDefault();
+                          handleDrop(pegIdx);
+                      }}
+                      >
+                      <div className="relative flex h-full w-full items-end justify-center">
+                          <div className="absolute left-1/2 h-full -translate-x-1/2 w-2 rounded-full bg-slate-200/80" />
+                          <div className="relative flex w-full flex-col items-center justify-end pb-2">
+                          {peg.slice().reverse().map((diskIndex, reverseIdx) => {
+                              
+                              const actualIdx = peg.length - 1 - reverseIdx;
+                              const widthPercent = 15 + (diskIndex + 1) * 10;
+                              const isTop = actualIdx === peg.length - 1;
+                              return (
+                              <div
+                                  key={`${pegIdx}-${diskIndex}-${actualIdx}`}
+                                  draggable={isTop}
+                                  onDragStart={(e) => {
+                                  const allowed = handleDragStart(pegIdx);
+                                  if (!allowed) e.preventDefault();
+                                  }}
+                                  className={`h-8 rounded-full text-center text-sm font-bold text-slate-900 shadow-lg transition-transform cursor-pointer ${
+                                  isTop && selected === pegIdx
+                                      ? "-translate-y-4"
+                                      : ""
+                                  }`}
+                                  style={{
+                                  width: `${widthPercent}%`,
+                                  background: DISK_COLORS[diskIndex] ?? "#38bdf8",
+                                  }}
+                              >
+                              </div>
+                              );
+                          })}
+                          </div>
+                      </div>
+                      </div>
+                  ))}
                 </div>
             </div>
         </div>
@@ -368,6 +405,25 @@ export default function GamePage() {
                 Proceed
               </button>
             </div>
+          </div>
+        </div>
+      ) : null}
+
+      {showTimeoutReset ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <div className="bg-black border border-white w-full max-w-md rounded-3xl px-6 py-6 flex flex-col">
+            <h3
+              className="text-2xl font-bold text-slate-50"
+              style={{ fontFamily: "var(--font-bungee)" }}
+            >
+              Time's Up!
+            </h3>
+            <p className="mt-3 text-slate-200">
+              The game has been reset after {timer > 1 ? `${timer} minutes` : timer == 1 ? `1 minute` : `${timer * 60} seconds`}. Press Enter to start the next attempt.
+            </p>
+            <p className="mt-6 text-center text-sm font-medium flicker-text">
+              Press Enter to continue
+            </p>
           </div>
         </div>
       ) : null}
